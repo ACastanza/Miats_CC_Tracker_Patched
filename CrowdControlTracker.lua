@@ -16,6 +16,7 @@ local CCT_ZOS_DEFAULT_ICON = "/esoui/art/icons/ability_mage_065.dds"
 
 local CCT_DEFAULT_STUN_ICON = "/esoui/art/inventory/gamepad/gp_inventory_icon_apparel.dds"
 local CCT_DEFAULT_FEAR_ICON = "/esoui/art/compass/ava_murderball_neutral.dds"
+local CCT_DEFAULT_CHARM_ICON = "/esoui/art/icons/ability_buff_minor_expedition.dds"
 local CCT_DEFAULT_DISORIENT_ICON = "/esoui/art/ava/ava_rankicon64_grandoverlord.dds"
 local CCT_DEFAULT_SILENCE_ICON = "/esoui/art/icons/heraldrycrests_misc_eye_01.dds"
 
@@ -38,6 +39,7 @@ CCT.controlTypes={
 	ACTION_RESULT_STUNNED,
 	ACTION_RESULT_FEARED,
 	ACTION_RESULT_DISORIENTED,
+	ACTION_RESULT_CHARMED,
 	ACTION_RESULT_SILENCED,
 	ACTION_RESULT_STAGGERED,
 	ACTION_RESULT_AREA_EFFECT,
@@ -47,13 +49,15 @@ CCT.actionResults = {
 	[ACTION_RESULT_STUNNED] = true,
 	[ACTION_RESULT_FEARED] = true,
 	[ACTION_RESULT_DISORIENTED] = true,
+	[ACTION_RESULT_CHARMED]     = true,
 }
 
 CCT.controlText={
 	[ACTION_RESULT_STUNNED]		= "STUNNED",
 	[ACTION_RESULT_FEARED]		= "FEARED",
 	[ACTION_RESULT_DISORIENTED] = "DISORIENTED",
-	[ACTION_RESULT_SILENCED]	= "SILENCED",
+	[ACTION_RESULT_CHARMED]        = "CHARMED",
+	[ACTION_RESULT_SILENCED]       = "SILENCED",
 	[ACTION_RESULT_STAGGERED]	= "STAGGER",
 	[ACTION_RESULT_IMMUNE]		= "IMMUNE",
 	[ACTION_RESULT_DODGED]		= "DODGED",
@@ -101,7 +105,8 @@ CCT.defaults={
 	colors={
 		[ACTION_RESULT_STUNNED]={0.894118, 0.133333, 0.090196, 1},
 		[ACTION_RESULT_DISORIENTED]={0.0313725509,0.6274510026,1, 1},
-		[ACTION_RESULT_FEARED]={0.5607843137, 0.0352941176, 0.9254901961, 1},
+        [ACTION_RESULT_FEARED] = { 0.5607843137, 0.0352941176, 0.9254901961, 1 },
+		[ACTION_RESULT_CHARMED] = { 0.2509803922, 1, 0.1254901961, 1 },
 		[ACTION_RESULT_SILENCED]={0, 1, 1, 1},
 		[ACTION_RESULT_STAGGERED]={1,0.9490196109,0.1294117719,1},
 		[ACTION_RESULT_IMMUNE]={1,1,1,1},
@@ -279,6 +284,7 @@ function CCT:OnCombat(eventCode, result, isError, abilityName, abilityGraphic, a
 		[ACTION_RESULT_BLOCKED] = true,
 		[ACTION_RESULT_BLOCKED_DAMAGE] = true,
 		[ACTION_RESULT_DISORIENTED] = true,
+		[ACTION_RESULT_CHARMED] = true,
 	}
 
 	if not validResults[result] then return end
@@ -342,6 +348,15 @@ function CCT:OnCombat(eventCode, result, isError, abilityName, abilityGraphic, a
 					self:OnDraw(abilityId, hitValue, ACTION_RESULT_FEARED, abilityName, hitValue)
 				end
 				self.incomingCC = {}
+			elseif abilityId == self.incomingCC[ACTION_RESULT_CHARMED] and (currentEndTime + 200) > PriorityOne.endTime and (currentEndTime + 200) > PriorityTwo.endTime then
+				table.insert(self.fearsQueue, abilityId)
+				PriorityTwo={endTime = currentEndTime, abilityId = abilityId, hitValue = hitValue, result = ACTION_RESULT_CHARMED, abilityName = abilityName}
+				if PriorityOne.endTime == 0 then
+					self.currentCC = 2
+					zo_callLater(function() self:RemoveCC(2, currentEndTime) end, hitValue + CCT_GRACE_TIME)
+					self:OnDraw(abilityId, hitValue, ACTION_RESULT_CHARMED, abilityName, hitValue)
+				end
+				self.incomingCC = {}
 			elseif abilityId == self.incomingCC[ACTION_RESULT_DISORIENTED] and (currentEndTime + 200) > PriorityOne.endTime and (currentEndTime + 200) > PriorityTwo.endTime and currentEndTime > PriorityThree.endTime then
 				-- self.incomingCC[ACTION_RESULT_DISORIENTED] == nil
 				table.insert(self.disorientsQueue, abilityId)
@@ -364,7 +379,7 @@ function CCT:OnCombat(eventCode, result, isError, abilityName, abilityGraphic, a
 			local currentTime=GetFrameTimeMilliseconds()
 			local currentEndTime=currentTime+foundValue.hitValue
 
-			if result==ACTION_RESULT_FEARED and (currentEndTime+200)>PriorityOne.endTime and (currentEndTime+200)>PriorityTwo.endTime then
+			if (result == ACTION_RESULT_FEARED or result == ACTION_RESULT_CHARMED) and (currentEndTime + 200) > PriorityOne.endTime and (currentEndTime + 200) > PriorityTwo.endTime then
 				table.insert(self.fearsQueue, abilityId)
 				PriorityTwo={endTime=currentEndTime, abilityId=abilityId, hitValue=foundValue.hitValue, result=result, abilityName=abilityName}
 				if PriorityOne.endTime==0 then
@@ -461,7 +476,7 @@ function CCT:RemoveCC(ccType, currentEndTime)
 			self:OnDraw(PrioritySix.abilityId, PrioritySix.hitValue, PrioritySix.result, PrioritySix.abilityName, sixthInterval)
 			return
 		end
-----FEAR----
+----FEAR OR CHARM----
 	elseif ccType==2 then
 		if (self.currentCC==1 or self.currentCC==2) and PriorityTwo.endTime~=currentEndTime then return end
 		PriorityTwo={endTime=0, abilityId=0, hitValue=0, result=0, abilityName=""}
@@ -543,6 +558,7 @@ end
 function CCT:GetDefaultIcon(ccType)
 	if ccType==ACTION_RESULT_STUNNED then return CCT_DEFAULT_STUN_ICON
 	elseif ccType==ACTION_RESULT_FEARED then return CCT_DEFAULT_FEAR_ICON
+    elseif ccType == ACTION_RESULT_CHARMED then return CCT_DEFAULT_CHARM_ICON
 	elseif ccType==ACTION_RESULT_DISORIENTED then return CCT_DEFAULT_DISORIENT_ICON
 	elseif ccType==ACTION_RESULT_SILENCED then return CCT_DEFAULT_SILENCE_ICON
 	elseif ccType==ACTION_RESULT_AREA_EFFECT then return CCT_ZOS_DEFAULT_ICON
@@ -1297,6 +1313,18 @@ function CCT:InitializeAddonMenu()
 	    self.SV.colors[ACTION_RESULT_FEARED] = {r,g,b,a}
 			self:InitControls()
 	end,
+	})
+	table.insert(optionsData, {
+		type = "colorpicker",
+		name = "Pick color for CHARMED state",
+		tooltip = "Pick color of CC text, timer and icon border for CHARMED crowd control",
+		default = ZO_ColorDef:New(unpack(self.defaults.colors[ACTION_RESULT_CHARMED])),
+		disabled = function() return not self.SV.enabled end,
+		getFunc = function() return unpack(self.SV.colors[ACTION_RESULT_CHARMED]) end,
+		setFunc = function(r, g, b, a)
+			self.SV.colors[ACTION_RESULT_CHARMED] = { r, g, b, a }
+			self:InitControls()
+		end,
 	})
 	table.insert(optionsData, {
 		type = "colorpicker",
